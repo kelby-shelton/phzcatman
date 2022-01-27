@@ -83,12 +83,12 @@ class ZcatmanConnector(BaseConnector):
 
         except requests.exceptions.HTTPError as http_error:
             if r:
-                return False, 'HTTPError: {}'.format(r.json())
+                return False, 'HTTPError: {r_json} - Payload: {payload}'.format(r_json=r.json(), payload=data if data else json)
             else:
                 return False, 'HTTPError: {}'.format(traceback.format_exc())
         except requests.exceptions.RequestException as err:
             if r:
-                return False, 'RequestException: {}'.format(r.json())
+                return False, 'RequestException: {r_json} - Payload: {payload}'.format(r_json=r.json(), payload=data if data else json)
             else:
                 return False, 'RequestException: {}'.format(traceback.format_exc())
 
