@@ -75,24 +75,18 @@ class ZcatmanConnector(BaseConnector):
                 auth=auth,
                 json=json,
             )
-            r.raise_for_status()
             if not(github_download):
                 response_data = r.json()
             else:
                 response_data = r.content
 
-        except requests.exceptions.HTTPError as http_error:
-            if r:
-                return False, 'HTTPError: {r_json} - Payload: {payload}'.format(r_json=r.json(), payload=data if data else json)
-            else:
-                return False, 'HTTPError: {}'.format(traceback.format_exc())
-        except requests.exceptions.RequestException as err:
-            if r:
-                return False, 'RequestException: {r_json} - Payload: {payload}'.format(r_json=r.json(), payload=data if data else json)
-            else:
-                return False, 'RequestException: {}'.format(traceback.format_exc())
+            if 200 <= r.status_code < 399:
+                return RetVal(True, response_data)
 
-        return True, response_data
+            return False, response_data
+
+        except Exception as e:
+                return False, 'Request error: {}'.format(traceback.format_exc())
 
     def _handle_test_connectivity(self, param):
         # Add an action result object to self (BaseConnector) to represent the action for this param
@@ -226,8 +220,10 @@ class ZcatmanConnector(BaseConnector):
         payload = {'app': app_file_data.decode('utf-8')}
         try:
             status, app_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/app', method='post', json=payload, headers=self.phantom_header)
+            if phantom.is_fail(status):
+                return False, "Unable to install app. File - {}. Details - {}".format(file_, (str(app_response) if app_response else 'None'))
         except Exception as err:
-            return False, 'Unable to install app. File - {}. Details - {}'.format(file_, (str(app_response) if app_response else 'None'))
+            return False, 'Error occurred during app install. File - {}. Error - {}'.format(file_, traceback.format_exc())
 
         return True, 'Successfully updated app.'
 
