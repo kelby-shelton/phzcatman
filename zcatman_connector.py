@@ -596,7 +596,7 @@ class ZcatmanConnector(BaseConnector):
 
     def update_playbooks(self, file_directory):
         playbooks_dir = glob.glob('{}/*/playbooks'.format(file_directory))
-        settings_json = glob.glob('{}/*/playbooks/settings.json'.format(file_directory))
+        settings_json = glob.glob('{}/*/playbooks/playbook_settings.json'.format(file_directory))
         # pull in list of playbooks that should be active
         if settings_json:
             with open(settings_json[0], 'r') as active_file:
@@ -605,26 +605,27 @@ class ZcatmanConnector(BaseConnector):
             active_playbooks = None
         for root, dirs, files in os.walk(playbooks_dir[0]):
             for file_ in files:
-                with open(os.path.join(root, file_), 'rb') as playbook_file:
-                    playbook_file_data = playbook_file.read()
-                playbook_file_data = b64encode(playbook_file_data)
-                payload = {'playbook': playbook_file_data.decode('utf-8'), 'scm': 'local', 'force': True}
-                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_playbook', json=payload, method='post')
-                if not(status):
-                    return status, 'Unable to load playbooks. File - {}. Details - {}. Payload - {}'.format(file_, (str(response) if response else 'None'), str(payload))
-                playbook_name = file_.replace('.tgz', '')
-                # Attempt to activate playbooks that user marked active
-                if active_playbooks and playbook_name in active_playbooks:
-                    # Translate playbook_name to id as /rest/import_playbook does not return playbook_id 
-                    params = {'_filter_scm': 2, '_filter_name': '"{}"'.format(playbook_name)}
-                    status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook', params=params, method='get')
-                    try:
-                        for item in response['data']:
-                            payload = {'active': True}
-                            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook/{}'.format(item['id']), json=payload, method='post')
+                if file_.endswith('.tgz'):
+                    with open(os.path.join(root, file_), 'rb') as playbook_file:
+                        playbook_file_data = playbook_file.read()
+                    playbook_file_data = b64encode(playbook_file_data)
+                    payload = {'playbook': playbook_file_data.decode('utf-8'), 'scm': 'local', 'force': True}
+                    status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_playbook', json=payload, method='post')
+                    if not(status):
+                        return status, 'Unable to load playbooks. File - {}. Details - {}. Payload - {}'.format(file_, (str(response) if response else 'None'), str(payload))
+                    playbook_name = file_.replace('.tgz', '')
+                    # Attempt to activate playbooks that user marked active
+                    if active_playbooks and playbook_name in active_playbooks:
+                        # Translate playbook_name to id as /rest/import_playbook does not return playbook_id 
+                        params = {'_filter_scm': 2, '_filter_name': '"{}"'.format(playbook_name)}
+                        status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook', params=params, method='get')
+                        try:
+                            for item in response['data']:
+                                payload = {'active': True}
+                                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook/{}'.format(item['id']), json=payload, method='post')
 
-                    except Exception as e:
-                        return False, 'Playbooks loaded successfully but unable to activate: "{}" - error message: {}'.format(playbook_name, e)
+                        except Exception as e:
+                            return False, 'Playbooks loaded successfully but unable to activate: "{}" - error message: {}'.format(playbook_name, e)
 
 
         return True, 'Successfully loaded playbooks'
