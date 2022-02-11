@@ -46,7 +46,7 @@ class ZcatmanConnector(BaseConnector):
         # Call the BaseConnectors init first
         super(ZcatmanConnector, self).__init__()
 
-    def _rest_call(self, base_url, endpoint, method="get", headers=None, params=None, data=None, json=None, github_download=False, use_auth=True):
+    def _rest_call(self, base_url, endpoint, method="get", headers=None, params=None, data=None, json=None, github_download=False, use_auth=False):
         try:
             request_method = getattr(requests, method)
         except AttributeError:
@@ -93,7 +93,7 @@ class ZcatmanConnector(BaseConnector):
         self.save_progress("Testing Connectivity to Splunk SOAR Instance")
         try: 
             self.save_progress("Logging in with username + password")
-            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/', method='get', use_auth=True)
+            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/', method='get', )
             if not status:
                 self.save_progress("Failed to login - {}".format(response))
                 return action_result.set_status(phantom.APP_ERROR, "Test Connectivity Failed - Unable to connect to Splunk SOAR - Check username and password")
@@ -452,7 +452,7 @@ class ZcatmanConnector(BaseConnector):
                     role_file_data = role_file.read()
                 self.seek_and_destroy('roles', json.loads(role_file_data))
                 
-                status, role_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/role', method='post', json=json.loads(role_file_data), use_auth=True)
+                status, role_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/role', method='post', json=json.loads(role_file_data))
                 if not(status):
                     return False, 'Unable to load role. File - {}. Details - {}'.format(file_, (str(role_response) if role_response else 'None'))
         
@@ -470,7 +470,7 @@ class ZcatmanConnector(BaseConnector):
                     user_file_data = user_file.read()
                 self.seek_and_destroy('users', json.loads(user_file_data))
                 try:
-                    status, user_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/ph_user', method='post', data=user_file_data, use_auth=True)
+                    status, user_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/ph_user', method='post', data=user_file_data)
                 except Exception as err:
                     return False, 'Unable to load user. File - {}. Details - {}'.format(file_, (str(user_response) if user_response else 'None'))
         
@@ -490,7 +490,7 @@ class ZcatmanConnector(BaseConnector):
     #             filter_params = {
     #                 '_filter_{}__iexact'.format().field: '"{}"'.format(value)
     #             }
-    #             status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/{}'.format(endpoint), method='get', params=filter_params, use_auth=True)
+    #             status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/{}'.format(endpoint), method='get', params=filter_params)
     #             if not(status):
     #                 return status, 'Unable to live replace values - {} {} {}'.format(endpoint, field, value)
     #             replacement_value = response['data'][0][placeholder[1]]
@@ -540,7 +540,7 @@ class ZcatmanConnector(BaseConnector):
             endpoint = '/rest/ph_user'
             use_auth=True
 
-        status, response = self._rest_call(self.get_phantom_base_url_formatted(), endpoint, params=filter_params, use_auth=True)
+        status, response = self._rest_call(self.get_phantom_base_url_formatted(), endpoint, params=filter_params)
         if not(status):
             return status, 'Unable to search for existance of object. Details - {}'.format((str(response) if response else 'None'))
 
@@ -548,7 +548,7 @@ class ZcatmanConnector(BaseConnector):
             return status, response['data']
 
         if len(response['data']) == 1:
-            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '{}/{}'.format(endpoint, response['data'][0]['id']), method='delete', use_auth=True)
+            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '{}/{}'.format(endpoint, response['data'][0]['id']), method='delete')
             if not(status):
                 return status, 'Unable to delete existing object. Details - {}'.format((str(response) if response else 'None'))
 
