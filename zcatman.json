@@ -1,7 +1,7 @@
 {
     "appid": "b2fc2520-68b6-478d-abb9-d6f46e0fb5cc",
     "name": "ZCatman",
-    "description": "App for maintaining Phantom demo systems",
+    "description": "App for maintaining Splunk SOAR demo systems",
     "type": "virtualization",
     "product_vendor": "Splunk",
     "logo": "zcatman.png",
@@ -11,21 +11,13 @@
     "product_version_regex": ".*",
     "publisher": "Splunk",
     "license": "Copyright (c) 2020-2021 Splunk Inc.",
-    "app_version": "1.0.7",
+    "app_version": "2.0.0",
     "utctime_updated": "2020-06-18T17:26:23.065341Z",
     "package_name": "phantom_zcatman",
     "main_module": "zcatman_connector.py",
     "min_phantom_version": "4.8.23319",
     "app_wizard_version": "1.0.0",
     "configuration": {
-        "github_base_url": {
-            "description": "Github Base URL (e.g., https://api.github.com)",
-            "data_type": "string",
-            "required": true,
-            "value_list": [],
-            "default": "https://api.github.com",
-            "order": 0
-        },
         "github_repo_path": {
             "description": "Github Repo Path (e.g., /iforrest/phantom_demo)",
             "data_type": "string",
@@ -34,8 +26,8 @@
             "default": "/iforrest/phantom_demo",
             "order": 1
         },
-        "github_tarball_path": {
-            "description": "Github Tarball Path (e.g., /tarball/master)",
+        "github_branch": {
+            "description": "Github Branch (e.g., main)",
             "data_type": "string",
             "required": true,
             "value_list": [],
@@ -48,26 +40,20 @@
             "required": false,
             "order": 3
         },
-        "phantom_api_key": {
-            "description": "Phantom API Key (must had admin role)",
-            "data_type": "password",
-            "required": true,
-            "order": 4
-        },
-        "phantom_base_url": {
-            "description": "Certain calls require external base url",
+        "soar_base_url": {
+            "description": "SOAR Base URL",
             "data_type": "string",
             "required": true,
             "order": 5
         },
-        "phantom_username": {
-            "description": "Phantom Admin User",
+        "soar_username": {
+            "description": "SOAR Admin User",
             "data_type": "string",
             "required": true,
             "order": 6
         },
-        "phantom_password": {
-            "description": "Phantom Admin Password",
+        "soar_password": {
+            "description": "SOAR Admin Password",
             "data_type": "password",
             "required": true,
             "order": 7
@@ -152,8 +138,8 @@
             "type": "generic",
             "read_only": false,
             "parameters": {
-                "object_types": {
-                    "description": "demo objects type to load (comma separated)",
+                "include_object_types": {
+                    "description": "demo objects type to include (comma separated). Leave blank to load all.",
                     "data_type": "string",
                     "required": false,
                     "primary": false,
@@ -174,8 +160,8 @@
                     "required": false,
                     "primary": false
                 },
-                "duplicate_containers_across_tenants": {
-                  "description": "supports duplicating containers across all available tenants",
+                "duplicate_across_tenants": {
+                  "description": "Supports duplicating seed_containers across all available tenants",
                   "data_type": "boolean",
                   "required": false,
                   "primary": false

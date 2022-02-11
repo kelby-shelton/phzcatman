@@ -46,7 +46,7 @@ class ZcatmanConnector(BaseConnector):
         # Call the BaseConnectors init first
         super(ZcatmanConnector, self).__init__()
 
-    def _rest_call(self, base_url, endpoint, method="get", headers=None, params=None, data=None, json=None, github_download=False, use_auth=False):
+    def _rest_call(self, base_url, endpoint, method="get", headers=None, params=None, data=None, json=None, github_download=False, use_auth=True):
         try:
             request_method = getattr(requests, method)
         except AttributeError:
@@ -60,8 +60,7 @@ class ZcatmanConnector(BaseConnector):
 
         auth=None
         if use_auth:
-            config = self.get_config()
-            auth = (config['phantom_username'], config['phantom_password'])
+            auth = (self.soar_username, self.soar_password)
             headers = None
         
         try:
@@ -93,12 +92,6 @@ class ZcatmanConnector(BaseConnector):
         action_result = self.add_action_result(ActionResult(dict(param)))
         self.save_progress("Testing Connectivity to Splunk SOAR Instance")
         try: 
-            self.save_progress("Logging in with automation credentials to {}".format(self.get_phantom_base_url_formatted()))
-            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/', headers=self.phantom_header, method='get')
-            if not status:
-                self.save_progress("Failed to login - {}".format(response))
-                return action_result.set_status(phantom.APP_ERROR, "Test Connectivity Failed - Unable to connect to Splunk SOAR - Check automation key or Base URL parameter")
-            self.save_progress("Succesfully connected with automation credentials")
             self.save_progress("Logging in with username + password")
             status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/', headers=self.phantom_header, method='get', use_auth=True)
             if not status:
@@ -112,7 +105,7 @@ class ZcatmanConnector(BaseConnector):
     def get_phantom_base_url_formatted(self):
         try:
             config = self.get_config()
-            phantom_base_url = config['phantom_base_url']
+            phantom_base_url = config['soar_base_url']
 
             if phantom_base_url.endswith('/'):
                 phantom_base_url = phantom_base_url[:-1]
@@ -120,7 +113,6 @@ class ZcatmanConnector(BaseConnector):
             return phantom_base_url
         except Exception as err:
             return False, 'Error occurred getting phantom base url. Details - {}'.format(err.message)
-
 
 
     def _handle_container_labels(self, container_label):
@@ -227,6 +219,43 @@ class ZcatmanConnector(BaseConnector):
 
         return True, 'Successfully updated app.'
 
+    def _list_github_folders(self):
+        self.save_progress('Retrieving github folder list')
+        folder_list = []
+        config = self.get_config()
+
+        github_header = {}
+
+        if config.get('github_personal_access_token'):
+            github_header = {
+                'Authorization':
+                'token {}'.format(config['github_personal_access_token'])
+            }
+
+        github_base_url ='https://api.github.com'
+        
+        github_repo_path = config['github_repo_path']
+        if not(github_repo_path.startswith('/')):
+            github_repo_path = '/{}'.format(github_repo_path)
+        if github_repo_path.endswith('/'):
+            github_repo_path = github_repo_path[:-1]
+        
+        github_branch = config['github_branch'].replace('/','')
+
+        github_endpoint = '/repos{}/contents/?ref={}'.format(github_repo_path, github_branch)
+        
+        status, response = self._rest_call(
+            github_base_url,
+            github_endpoint,
+            headers=github_header
+        )
+
+        if status:
+            for item in response:
+                folder_list.append(item['path'])
+
+        return folder_list
+
     def _get_github_data(self):
         self.save_progress('Retrieving github demo data')
         config = self.get_config()
@@ -239,9 +268,7 @@ class ZcatmanConnector(BaseConnector):
                 'token {}'.format(config['github_personal_access_token'])
             }
 
-        github_base_url = config['github_base_url']
-        if github_base_url.endswith('/'):
-            github_base_url = github_base_url[:-1]
+        github_base_url ='https://api.github.com'
         
         github_repo_path = config['github_repo_path']
         if not(github_repo_path.startswith('/')):
@@ -249,11 +276,7 @@ class ZcatmanConnector(BaseConnector):
         if github_repo_path.endswith('/'):
             github_repo_path = github_repo_path[:-1]
 
-        github_tarball_path = config['github_tarball_path']
-        if not(github_tarball_path.startswith('/')):
-            github_tarball_path = '/{}'.format(github_tarball_path)
-        if github_tarball_path.endswith('/'):
-            github_tarball_path = github_tarball_path[:-1]
+        github_tarball_path = '/tarball/' + config['github_branch'].replace('/', '')
         
         github_endpoint = '/repos{}{}'.format(github_repo_path, github_tarball_path)
 
@@ -545,7 +568,7 @@ class ZcatmanConnector(BaseConnector):
                 status, response = self.seek_and_destroy('asset', json.loads(asset_file_data))
                 if not(status):
                     return status, 'Unable to check existance asset data. File - {}. Details - {}'.format(file_, response)
-                asset_file_data = asset_file_data.replace('$$$PH_AUTH_TOKEN$$$', config['phantom_api_key']).replace('$$$PH_SERVER_NAME$$$', self.get_phantom_base_url_formatted().replace('https://', '').replace('http://', ''))
+                #asset_file_data = asset_file_data.replace('$$$PH_AUTH_TOKEN$$$', config['phantom_api_key']).replace('$$$PH_SERVER_NAME$$$', self.get_phantom_base_url_formatted().replace('https://', '').replace('http://', ''))
                 asset_status, asset_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/asset', data=asset_file_data, headers=self.phantom_header, method='post')
                 if not(asset_status):
                     return asset_status, 'Unable to load assets. File - {}. Details - {}'.format(file_, (str(asset_response) if asset_response else 'None'))
@@ -572,7 +595,7 @@ class ZcatmanConnector(BaseConnector):
 
     def update_playbooks(self, file_directory):
         playbooks_dir = glob.glob('{}/*/playbooks'.format(file_directory))
-        settings_json = glob.glob('{}/*/settings.json'.format(file_directory))
+        settings_json = glob.glob('{}/*/playbooks/settings.json'.format(file_directory))
         # pull in list of playbooks that should be active
         if settings_json:
             with open(settings_json[0], 'r') as active_file:
@@ -626,9 +649,9 @@ class ZcatmanConnector(BaseConnector):
 
         return True, 'Successfully loaded response templates'
 
-    def update_severities(self, file_directory):
-        settings_file = glob.glob('{}/*/settings.json'.format(file_directory))
-        custom_severities = []
+    def custom_settings_handler(self, file_directory):
+        settings_file = glob.glob('{}/*/custom_settings/settings.json'.format(file_directory))
+
         # pull in list of custom severities
         if settings_file:
             with open(settings_file[0], 'r') as active_file:
@@ -656,14 +679,42 @@ class ZcatmanConnector(BaseConnector):
                 if not(status):
                     return status, 'Unable to rank severity - {0} - {1}'.format(severity_order, response)
 
-            return True, 'Succesfully loaded severities'
+            return True, 'Succesfully loaded custom_settings'
         else:
-            return False, 'No severities found in settings.json'
+            return False, 'No compatible settings found in settings.json'
 
     def _handle_load_demo_data(self, param):
         try:
             self.save_progress("In action handler for: {0}".format(self.get_action_identifier()))
             action_result = self.add_action_result(ActionResult(dict(param)))
+            
+            folder_list = self._list_github_folders()
+            if not folder_list:
+                return action_result.set_status(phantom.APP_ERROR, "No folders found in github repo and branch. Check github access token, github repo path, and github branch were entered correctly.") 
+            
+            supported_object_list = ['roles', 'users', 'assets', 'compiled_apps', 'demo_config__containers', 'playbooks', 'response_templates', 'seed_containers', 'custom_functions', 'custom_settings']
+            unsupported_types = list(set(folder_list).difference(supported_object_list))
+            
+            if unsupported_types:
+                self.debug_print("Skipping these unsupported folders: {}".format(unsupported_types))
+            
+            object_types = list(set(folder_list).intersection(supported_object_list))
+            if not object_types:
+                return action_result.set_status(phantom.APP_ERROR, "No compatible items found")
+            include_object_types = param.get('object_types', '')
+            exclude_object_types = param.get('exclude_object_types', '')
+            if not include_object_types and not exclude_object_types:
+                import_object_list = object_types
+                self.save_progress("No filters provided. Importing these compatible github folders: {}".format(import_object_list))
+            else:
+                include_object_types = [item.strip().lower() for item in include_object_types.split(',') if item]
+                if include_object_types:
+                    import_object_list = [item for item in object_types if item in include_object_types]
+                else:
+                    import_object_list = object_types
+                exclude_object_types = [item.strip().lower() for item in exclude_object_types.split(',') if item]
+                import_object_list = [item for item in import_object_list if item not in exclude_object_types]
+                self.save_progress("Importing these compatible github folders based on filter criteria: {}".format(import_object_list))
             
             status, response = self._get_github_data()
             if not(status):
@@ -673,81 +724,72 @@ class ZcatmanConnector(BaseConnector):
             if not(status):
                 return action_result.set_status(phantom.APP_ERROR, response)
             
-            object_list = ['roles', 'users', 'assets', 'compiled_apps', 'demo_config__containers', 'playbooks', 'response_templates', 'seed_containers', 'custom_functions', 'severities']
-            object_types = param.get('object_types', '').split(',')
-            exclude_object_list = param.get('exclude_object_types', '').split(',')
-
-            if len([type_ for type_ in object_types if type_]) > 0:
-                object_list = [type_.strip().lower() for type_ in object_types if type_]
-            
-            object_list = [type_ for type_ in object_list if type_ not in [item.strip().lower() for item in exclude_object_list]]
-
             summary = {}
-
-            if 'roles' in object_list:
+            
+            if 'roles' in import_object_list:
                 self.save_progress('Loading role data')
                 status, message = self.update_roles(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['roles_message'] = message
 
-            if 'users' in object_list:
+            if 'users' in import_object_list:
                 self.save_progress('Loading user data')
                 status, message = self.update_users(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['users_message'] = message
 
-            if 'demo_config__containers' in object_list:
+            if 'demo_config__containers' in import_object_list:
                 self.save_progress('Loading demo configuration container data')
                 status, message = self.update_containers(untar_response, param=param)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['demo_config__containers_message'] = message
 
-            if 'compiled_apps' in object_list:
+            if 'compiled_apps' in import_object_list:
                 self.save_progress('Loading demo app data')
                 status, message = self.update_apps(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['compiled_apps_message'] = message
 
-            if 'assets' in object_list:
+            if 'assets' in import_object_list:
                 self.save_progress('Loading demo asset data')
                 status, message = self.update_assets(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['assets_message'] = message
 
-            if 'playbooks' in object_list:
+            if 'playbooks' in import_object_list:
                 self.save_progress('Loading demo playbook data')
                 status, message = self.update_playbooks(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['playbooks_message'] = message
 
-            if 'custom_functions' in object_list:
+            if 'custom_functions' in import_object_list:
                 self.save_progress('Loading demo custom function data')
                 status, message = self.update_custom_functions(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['custom_functions_message'] = message
 
-            if 'response_templates' in object_list:
+            if 'response_templates' in import_object_list:
                 self.save_progress('Loading response templates')
                 status, message = self.update_response_templates(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['response_templates_message'] = message
 
-            if 'severities' in object_list:
-                self.save_progress('Loading severity data')
-                status, message = self.update_severities(untar_response)
+            if 'custom_settings' in import_object_list:
+                self.save_progress('Loading custom settings data')
+                status, message = self.custom_settings_handler(untar_response)
                 if not(status):
                     return action_result.set_status(phantom.APP_ERROR, message)
                 summary['seed_containers_message'] = message
 
-            if 'seed_containers' in object_list:
+            if 'seed_containers' in import_object_list:
                 self.save_progress('Loading seed container data')
                 status, message = self.update_containers(untar_response, github_path='seed_containers', do_not_destroy=False, param=param)
                 if not(status):
@@ -818,10 +860,10 @@ class ZcatmanConnector(BaseConnector):
         return ret_val
 
     def initialize(self):
+
         config = self.get_config()
-        self.phantom_header = {
-            'ph-auth-token': config['phantom_api_key']
-        }
+        self.soar_username = config['soar_username']
+        self.soar_password = config['soar_password']
 
         return phantom.APP_SUCCESS
 
