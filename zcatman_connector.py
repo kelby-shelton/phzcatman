@@ -46,7 +46,7 @@ class ZcatmanConnector(BaseConnector):
         # Call the BaseConnectors init first
         super(ZcatmanConnector, self).__init__()
 
-    def _rest_call(self, base_url, endpoint, method="get", headers=None, params=None, data=None, json=None, github_download=False, use_auth=False):
+    def _rest_call(self, base_url, endpoint, method="get", headers=None, params=None, data=None, json=None, github_download=False, use_soar_auth=True):
         try:
             request_method = getattr(requests, method)
         except AttributeError:
@@ -59,7 +59,7 @@ class ZcatmanConnector(BaseConnector):
         self.debug_print('URLY', url)
 
         auth=None
-        if use_auth:
+        if use_soar_auth:
             auth = (self.soar_username, self.soar_password)
             headers = None
         
@@ -247,7 +247,8 @@ class ZcatmanConnector(BaseConnector):
         status, response = self._rest_call(
             github_base_url,
             github_endpoint,
-            headers=github_header
+            headers=github_header,
+            use_soar_auth=False
         )
 
         if status:
@@ -284,7 +285,8 @@ class ZcatmanConnector(BaseConnector):
             github_base_url,
             github_endpoint,
             headers=github_header,
-            github_download=True
+            github_download=True,
+            use_soar_auth=False
         )
 
         return status, response
@@ -501,7 +503,6 @@ class ZcatmanConnector(BaseConnector):
     def seek_and_destroy(self, object_type, object_data, do_not_destroy=False):
         filter_params = None
         endpoint = None 
-        use_auth=False
         
         if object_type == 'asset':
             filter_params = {
@@ -531,14 +532,14 @@ class ZcatmanConnector(BaseConnector):
                 '_filter_name__iexact': '"{}"'.format(object_data['name'])
             }
             endpoint = '/rest/role'
-            use_auth=True
+            
 
         if object_type == 'users':
             filter_params = {
                 '_filter_username__iexact': '"{}"'.format(object_data['username'])
             }
             endpoint = '/rest/ph_user'
-            use_auth=True
+            
 
         status, response = self._rest_call(self.get_phantom_base_url_formatted(), endpoint, params=filter_params)
         if not(status):
