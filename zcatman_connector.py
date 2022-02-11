@@ -701,7 +701,7 @@ class ZcatmanConnector(BaseConnector):
             object_types = list(set(folder_list).intersection(supported_object_list))
             if not object_types:
                 return action_result.set_status(phantom.APP_ERROR, "No compatible items found")
-            include_object_types = param.get('object_types', '')
+            include_object_types = param.get('include_object_types', '')
             exclude_object_types = param.get('exclude_object_types', '')
             if not include_object_types and not exclude_object_types:
                 import_object_list = object_types
