@@ -422,7 +422,7 @@ class ZcatmanConnector(BaseConnector):
         except Exception as err:
             return False, "Error during container load - {}".format(traceback.format_exc())
 
-        return True, 'Successfully loaded demo_configuration container data'
+        return True, 'Successfully loaded {} container data'.format(github_path)
 
     def update_apps(self, file_directory):
         apps_dir = glob.glob('{}/*/compiled_apps'.format(file_directory))
