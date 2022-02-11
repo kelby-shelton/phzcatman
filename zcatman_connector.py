@@ -93,7 +93,7 @@ class ZcatmanConnector(BaseConnector):
         self.save_progress("Testing Connectivity to Splunk SOAR Instance")
         try: 
             self.save_progress("Logging in with username + password")
-            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/', headers=self.phantom_header, method='get', use_auth=True)
+            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/', method='get', use_auth=True)
             if not status:
                 self.save_progress("Failed to login - {}".format(response))
                 return action_result.set_status(phantom.APP_ERROR, "Test Connectivity Failed - Unable to connect to Splunk SOAR - Check username and password")
@@ -116,11 +116,11 @@ class ZcatmanConnector(BaseConnector):
 
 
     def _handle_container_labels(self, container_label):
-        status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container_options', headers=self.phantom_header, method='get')
+        status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container_options', method='get')
         existing_labels = response['label']
         if container_label not in existing_labels:
             data = {"add_label": True, "label_name": container_label}
-            label_add_status, label_add_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/system_settings/events', headers=self.phantom_header, json=data, method='post')
+            label_add_status, label_add_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/system_settings/events', json=data, method='post')
             if not(label_add_status):
                 return False, "Error adding label - {}".format(label_add_response)
             return True, "Labels succesfully added"
@@ -174,7 +174,7 @@ class ZcatmanConnector(BaseConnector):
         if not(status):
             return status, 'Unable to determine existence of asset. Details - {}'.format(str(response) if response else 'None')
 
-        asset_status, asset_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/asset', data=asset_file_data, headers=self.phantom_header, method='post')
+        asset_status, asset_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/asset', data=asset_file_data, method='post')
         if not(asset_status):
             return asset_status, 'Unable to load assets. File - {}. Details - {}'.format(file_, (str(asset_response) if asset_response else 'None'))
 
@@ -192,7 +192,7 @@ class ZcatmanConnector(BaseConnector):
 
         playbook_file_data = b64encode(playbook_file_data)
         payload = {'playbook': playbook_file_data.decode('utf-8'), 'scm': 'local', 'force': True}
-        status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_playbook', json=payload, headers=self.phantom_header, method='post')
+        status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_playbook', json=payload, method='post')
         if not(status):
             return status, 'Unable to load playbook. Details - {}'.format((str(response) if response else 'None'))
 
@@ -211,7 +211,7 @@ class ZcatmanConnector(BaseConnector):
         app_file_data = b64encode(app_file_data)
         payload = {'app': app_file_data.decode('utf-8')}
         try:
-            status, app_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/app', method='post', json=payload, headers=self.phantom_header)
+            status, app_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/app', method='post', json=payload)
             if phantom.is_fail(status):
                 return False, "Unable to install app. File - {}. Details - {}".format(file_, (str(app_response) if app_response else 'None'))
         except Exception as err:
@@ -318,12 +318,12 @@ class ZcatmanConnector(BaseConnector):
 
         # Get tenancy status
         try:
-            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/system_settings?sections=["multi_tenant"]', headers=self.phantom_header)    
+            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/system_settings?sections=["multi_tenant"]')    
             multi_tenancy_enabled = response.get('multi_tenant', {}).get('enabled', False)
             if multi_tenancy_enabled:
                 # Get tenant list
                 tenant_id_list = []
-                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/tenant?page_size=0', headers=self.phantom_header)
+                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/tenant?page_size=0')
                 for tenant in response.get('data'):
                     tenant_id_list.append(tenant['id'])
         except Exception as err:
@@ -335,12 +335,12 @@ class ZcatmanConnector(BaseConnector):
                 'page_size': 0
             }
             if not(single) and not(do_not_destroy): 
-                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container', headers=self.phantom_header, params=parameters)
+                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container', params=parameters)
                 if not(status):
                     return False, 'Unable to retrieve demo_configuration containers. Details - {}'.format(str(response) if response else 'None')
 
                 for container in response['data']:
-                    status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/{}'.format(container['id']), headers=self.phantom_header, method='delete')
+                    status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container/{}'.format(container['id']), method='delete')
                     if not(status):
                         return False, 'Unable to delete demo_configuration containers. Details - {}'.format(str(response) if response else 'None')
 
@@ -359,7 +359,7 @@ class ZcatmanConnector(BaseConnector):
                                 'file_content': serialized_contents.decode('utf-8'),
                                 'file_name': file_
                             }
-                            status, vault_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container_attachment', method='post', json=attachment_json, headers=self.phantom_header)
+                            status, vault_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/container_attachment', method='post', json=attachment_json)
                             if not(status):
                                 return False, 'Unable to upload vault data. File - {}. Details - {}'.format(file_, (str(vault_response) if vault_response else 'None'))
                     elif '.json' in file_ and not(root.endswith('vault')):
@@ -435,7 +435,7 @@ class ZcatmanConnector(BaseConnector):
                 app_file_data = b64encode(app_file_data)
                 payload = {'app': app_file_data.decode('utf-8')}
                 
-                status, app_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/app', method='post', json=payload, headers=self.phantom_header)
+                status, app_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/app', method='post', json=payload)
                 if not(status):
                     return False, 'Unable to install app. File - {}. Details - {}'.format(file_, (str(app_response) if app_response else 'None'))
         
@@ -540,7 +540,7 @@ class ZcatmanConnector(BaseConnector):
             endpoint = '/rest/ph_user'
             use_auth=True
 
-        status, response = self._rest_call(self.get_phantom_base_url_formatted(), endpoint, params=filter_params, headers=self.phantom_header, use_auth=True)
+        status, response = self._rest_call(self.get_phantom_base_url_formatted(), endpoint, params=filter_params, use_auth=True)
         if not(status):
             return status, 'Unable to search for existance of object. Details - {}'.format((str(response) if response else 'None'))
 
@@ -548,7 +548,7 @@ class ZcatmanConnector(BaseConnector):
             return status, response['data']
 
         if len(response['data']) == 1:
-            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '{}/{}'.format(endpoint, response['data'][0]['id']), headers=self.phantom_header, method='delete', use_auth=True)
+            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '{}/{}'.format(endpoint, response['data'][0]['id']), method='delete', use_auth=True)
             if not(status):
                 return status, 'Unable to delete existing object. Details - {}'.format((str(response) if response else 'None'))
 
@@ -569,7 +569,7 @@ class ZcatmanConnector(BaseConnector):
                 if not(status):
                     return status, 'Unable to check existance asset data. File - {}. Details - {}'.format(file_, response)
                 #asset_file_data = asset_file_data.replace('$$$PH_AUTH_TOKEN$$$', config['phantom_api_key']).replace('$$$PH_SERVER_NAME$$$', self.get_phantom_base_url_formatted().replace('https://', '').replace('http://', ''))
-                asset_status, asset_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/asset', data=asset_file_data, headers=self.phantom_header, method='post')
+                asset_status, asset_response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/asset', data=asset_file_data, method='post')
                 if not(asset_status):
                     return asset_status, 'Unable to load assets. File - {}. Details - {}'.format(file_, (str(asset_response) if asset_response else 'None'))
 
@@ -587,7 +587,7 @@ class ZcatmanConnector(BaseConnector):
                     custom_function_file_data = custom_function_file.read()
                 custom_function_file_data = b64encode(custom_function_file_data)
                 payload = {'custom_function': custom_function_file_data.decode('utf-8'), 'scm': 'local', 'force': True}
-                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_custom_function', json=payload, headers=self.phantom_header, method='post')
+                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_custom_function', json=payload, method='post')
                 if not(status):
                     return status, 'Unable to load custom_function. File - {}. Details - {}'.format(file_, (str(response) if response else 'None'))
 
@@ -608,7 +608,7 @@ class ZcatmanConnector(BaseConnector):
                     playbook_file_data = playbook_file.read()
                 playbook_file_data = b64encode(playbook_file_data)
                 payload = {'playbook': playbook_file_data.decode('utf-8'), 'scm': 'local', 'force': True}
-                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_playbook', json=payload, headers=self.phantom_header, method='post')
+                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/import_playbook', json=payload, method='post')
                 if not(status):
                     return status, 'Unable to load playbooks. File - {}. Details - {}. Payload - {}'.format(file_, (str(response) if response else 'None'), str(payload))
                 playbook_name = file_.replace('.tgz', '')
@@ -616,11 +616,11 @@ class ZcatmanConnector(BaseConnector):
                 if active_playbooks and playbook_name in active_playbooks:
                     # Translate playbook_name to id as /rest/import_playbook does not return playbook_id 
                     params = {'_filter_scm': 2, '_filter_name': '"{}"'.format(playbook_name)}
-                    status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook', params=params, headers=self.phantom_header, method='get')
+                    status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook', params=params, method='get')
                     try:
                         for item in response['data']:
                             payload = {'active': True}
-                            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook/{}'.format(item['id']), json=payload, headers=self.phantom_header, method='post')
+                            status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/playbook/{}'.format(item['id']), json=payload, method='post')
 
                     except Exception as e:
                         return False, 'Playbooks loaded successfully but unable to activate: "{}" - error message: {}'.format(playbook_name, e)
@@ -643,7 +643,7 @@ class ZcatmanConnector(BaseConnector):
                 workflow_template_id = ''
                 if len(response) > 0:
                     workflow_template_id = '/{}'.format(response[0]['id'])
-                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/workbook_template{}'.format(workflow_template_id), data=response_template_data, headers=self.phantom_header, method='post')
+                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/workbook_template{}'.format(workflow_template_id), data=response_template_data, method='post')
                 if not(status):
                     return status, 'Unable to load response templates. File - {}. Details - {}'.format(file_, (str(response) if response else 'None'))
 
@@ -661,7 +661,7 @@ class ZcatmanConnector(BaseConnector):
 
             if custom_severities:
                 # Get existing severities:
-                status, existing_severities = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/severity', headers=self.phantom_header)
+                status, existing_severities = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/severity')
                 if not status:
                     return status, 'Unable to get existing severities - {}'.format(existing_severities)
                 existing_severities = [item['name'] for item in existing_severities['data']]
@@ -669,13 +669,13 @@ class ZcatmanConnector(BaseConnector):
                 # Update severities
                 for severity in custom_severities:
                     if severity['name'] not in existing_severities:
-                        status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/severity', json=severity, headers=self.phantom_header, method='post')
+                        status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/severity', json=severity, method='post')
                         if not status:
                             return status, 'Unable to load severity - {0} - {1}'.format(severity, response)
 
             if severity_order:
                 data = {'names': severity_order}
-                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/rank_severities', json=data, headers=self.phantom_header, method='post')
+                status, response = self._rest_call(self.get_phantom_base_url_formatted(), '/rest/rank_severities', json=data, method='post')
                 if not(status):
                     return status, 'Unable to rank severity - {0} - {1}'.format(severity_order, response)
 
