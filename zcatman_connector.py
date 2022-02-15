@@ -13,6 +13,7 @@ from __future__ import print_function, unicode_literals
 
 # Phantom App imports
 import phantom.app as phantom
+
 # Usage of the consts file is recommended
 # from zcatman_consts import *
 import requests
@@ -1147,7 +1148,7 @@ class ZcatmanConnector(BaseConnector):
                 status, message = self.custom_settings_handler(untar_response)
                 if not (status):
                     return action_result.set_status(phantom.APP_ERROR, message)
-                summary["seed_containers_message"] = message
+                summary["custom_settings_message"] = message
 
             if "seed_containers" in import_object_list:
                 self.save_progress("Loading seed container data")
