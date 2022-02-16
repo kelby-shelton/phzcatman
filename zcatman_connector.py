@@ -13,7 +13,6 @@ from __future__ import print_function, unicode_literals
 
 # Phantom App imports
 import phantom.app as phantom
-
 # Usage of the consts file is recommended
 # from zcatman_consts import *
 import requests
@@ -34,6 +33,11 @@ import traceback
 import uuid
 from base64 import b64encode
 
+import django
+import encryption_helper
+from phantom_ui.ui.models import PhUser, SystemSettings
+import string
+import secrets
 
 class RetVal(tuple):
     def __new__(cls, val1, val2=None):
@@ -138,6 +142,47 @@ class ZcatmanConnector(BaseConnector):
                     err.message
                 ),
             )
+    
+    def get_automation_key(self, username=None, user_id=None):
+        if username:
+            params = {"include_automation": True, "_filter_username": f'"{username}"'}
+            status, user_response = self._rest_call(self.get_phantom_base_url_formatted(), "/rest/ph_user", params=params, use_soar_auth=True)
+            if not status:
+                return False, "Invalid query"
+            if user_response['count'] == 0:
+                return False, "Invalid username"
+            user_id = user_response['data'][0]['id']
+        if user_id:
+            _, token_response = self._rest_call(self.get_phantom_base_url_formatted() + f'/rest/ph_user/{user_id}/token', method='get', use_soar_auth=True)) 
+            if token_response.get('key'):   
+                return True, token_response['key']
+            else:
+                return False, "No automation toke found"
+        return False, "Must provide username or user_id"
+
+    def create_user(self, username, password=None, generate_pass=True, automation=True, allowed_ips=None, roles=None):
+        data = {'username': username, 'roles': roles}
+
+        if automation:
+            data['type'] = 'automation'
+            data['allowed_ips'] = [allowed_ips]
+        else:
+            if generate_pass:
+                alphabet = string.ascii_letters + string.digits + string.punctuation
+                password = ''.join(secrets.choice(alphabet) for i in range(20))
+            
+            data['password'] = password
+
+        status, response = self._rest_call(self.get_phantom_base_url_formatted() + '/rest/ph_user', method='post', json=data, use_soar_auth=True)
+        if not status:
+            if 'already exists' in response:
+                _, password = self.get_automation_key(username=username)
+            else:
+                return False, f"Error creating user: {username}"
+        elif automation:
+            password = self.get_automation_key(user_id=response['id'])
+        
+        return True, {'id': response['id'], 'password': password}
 
     def _handle_container_labels(self, container_label):
         status, response = self._rest_call(
@@ -946,61 +991,114 @@ class ZcatmanConnector(BaseConnector):
 
         return True, "Successfully loaded response templates"
 
-    def custom_settings_handler(self, file_directory):
-        settings_file = glob.glob(
-            "{}/*/custom_settings/settings.json".format(file_directory)
-        )
 
-        # pull in list of custom severities
-        if settings_file:
-            with open(settings_file[0], "r") as active_file:
-                settings_json = json.loads(active_file.read())
-                custom_severities = settings_json.get("custom_severities")
-                severity_order = settings_json.get("severity_order")
 
-            if custom_severities:
-                # Get existing severities:
-                status, existing_severities = self._rest_call(
-                    self.get_phantom_base_url_formatted(), "/rest/severity"
+    def update_system_settings_helper(self, system_settings_file):
+        with open(system_settings_file[0], "r") as active_file:
+            ss_json = json.loads(active_file.read())
+        if ss_json:
+            ss = SystemSettings.get_settings()
+            if ss_json.get('dummy_app'):
+                if ss_json['dummy_app'].get('create_automation_user'):
+                    roles = ['Automation']
+                    if ss_json.get('give_admin'):
+                        roles.append('Administrator')
+                    status, automation_account = self.create_user(username='soar_automation', automation=True, roles=roles, allowed_ips="any")
+                    if not status:
+                        return False, "Unable to create_automation_user"
+                    automation_token = automation_account['password']
+                elif ss_json['dummy_app'].get('automation_account'):
+                    status, automation_token = self.get_automation_key(username=ss_json['dummy_app']['automation_account'])
+                    if not status:
+                        return False, automation_token
+                ss.environment_variables = {
+                    'PHANTOM_API_KEY': {'type': 'password', 'value': encryption_helper.encrypt(automation_token, 'PHANTOM_API_KEY')},
+                    'NO_PROXY': {'type': 'text', 'value': '127.0.0.1,localhost'}
+                }
+            if ss_json.get('administrator_contact'):
+                ss.administrator_contact = ss_json['administrator_contact']
+            if ss_json.get('company_name'):
+                ss.company_name = ss_json['company_name']
+            if ss_json.get('system_name'):
+                ss.system_name = ss_json['system_name']
+            if ss_json.get('eula_accepted'):
+                ss.eula_accepted = ss_json['eula_accepted']
+            if ss_json.get('fqdn'):
+                if ss_json['fqdn'] == '$$PHANTOM_BASE_URL$$':
+                    ss.fqdn = self.get_phantom_base_url_formatted()
+                else:
+                    ss.fqdn = ss_json['fqdn']
+            ss.save(ignore_rabbit_error=True)
+
+            if ss_json.get('disable_admin_onboarding'):
+                admin_user = PhUser.objects.get(username='admin')
+                admin_user.profile.onboarding_state = {'redirect_onboarding': False}
+                admin_user.profile.save()
+                admin_user.save()
+        
+
+    def update_severity_settings_helper(self, severity_settings_file):
+        with open(severity_settings_file[0], "r") as active_file:
+            settings_json = json.loads(active_file.read())
+            custom_severities = settings_json.get("custom_severities")
+            severity_order = settings_json.get("severity_order")
+
+        if custom_severities:
+            # Get existing severities:
+            status, existing_severities = self._rest_call(
+                self.get_phantom_base_url_formatted(), "/rest/severity"
+            )
+            if not status:
+                return status, "Unable to get existing severities - {}".format(
+                    existing_severities
                 )
-                if not status:
-                    return status, "Unable to get existing severities - {}".format(
-                        existing_severities
-                    )
-                existing_severities = [
-                    item["name"] for item in existing_severities["data"]
-                ]
+            existing_severities = [
+                item["name"] for item in existing_severities["data"]
+            ]
 
-                # Update severities
-                for severity in custom_severities:
-                    if severity["name"] not in existing_severities:
-                        status, response = self._rest_call(
-                            self.get_phantom_base_url_formatted(),
-                            "/rest/severity",
-                            json=severity,
-                            method="post",
+            # Update severities
+            for severity in custom_severities:
+                if severity["name"] not in existing_severities:
+                    status, response = self._rest_call(
+                        self.get_phantom_base_url_formatted(),
+                        "/rest/severity",
+                        json=severity,
+                        method="post",
+                    )
+                    if not status:
+                        return status, "Unable to load severity - {0} - {1}".format(
+                            severity, response
                         )
-                        if not status:
-                            return status, "Unable to load severity - {0} - {1}".format(
-                                severity, response
-                            )
 
-            if severity_order:
-                data = {"names": severity_order}
-                status, response = self._rest_call(
-                    self.get_phantom_base_url_formatted(),
-                    "/rest/rank_severities",
-                    json=data,
-                    method="post",
+        if severity_order:
+            data = {"names": severity_order}
+            status, response = self._rest_call(
+                self.get_phantom_base_url_formatted(),
+                "/rest/rank_severities",
+                json=data,
+                method="post",
+            )
+            if not (status):
+                return status, "Unable to rank severity - {0} - {1}".format(
+                    severity_order, response
                 )
-                if not (status):
-                    return status, "Unable to rank severity - {0} - {1}".format(
-                        severity_order, response
-                    )
 
-            return True, "Succesfully loaded custom_settings"
-        else:
-            return False, "No compatible settings found in settings.json"
+        return True, "Succesfully loaded custom_settings"
+
+    def custom_settings_handler(self, file_directory):
+        severity_settings = glob.glob(
+            "{}/*/custom_settings/severity_settings.json".format(file_directory)
+        )
+        system_settings = glob.glob(
+            "{}/*/custom_settings/system_settings.json".format(file_directory)
+        )
+        # pull in list of custom severities
+        if severity_settings:
+            self.update_severity_settings_helper(severity_settings)
+        if system_settings:
+            self.update_system_settings_helper(system_settings)
+        if not severity_settings and not system_settings:
+             return False, "No compatible settings found in settings.json"
 
     def _handle_load_demo_data(self, param):
         try:
