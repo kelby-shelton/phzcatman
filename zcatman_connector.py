@@ -997,6 +997,8 @@ class ZcatmanConnector(BaseConnector):
         with open(system_settings_file[0], "r") as active_file:
             ss_json = json.loads(active_file.read())
         if ss_json:
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'phantom_ui.settings')
+            django.setup()
             ss = SystemSettings.get_settings()
             if ss_json.get('dummy_app'):
                 if ss_json['dummy_app'].get('create_automation_user'):
