@@ -11,33 +11,33 @@
 # Python 3 Compatibility imports
 from __future__ import print_function, unicode_literals
 
-# Phantom App imports
-import phantom.app as phantom
-# Usage of the consts file is recommended
-# from zcatman_consts import *
-import requests
-from phantom.action_result import ActionResult
-from phantom.base_connector import BaseConnector
-from phantom.vault import Vault
-from urllib3.exceptions import InsecureRequestWarning
-
-# Suppress only the single warning from urllib3 needed.
-requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+import encryption_helper
 import glob
 import json
 import os
+import requests
+import secrets
+import string
 import subprocess
 import tarfile
-import time
 import traceback
 import uuid
 from base64 import b64encode
 
-import django
-import encryption_helper
-from phantom_ui.ui.models import PhUser, SystemSettings
-import string
-import secrets
+# Phantom App imports
+import phantom.app as phantom
+from phantom.action_result import ActionResult
+from phantom.base_connector import BaseConnector
+from phantom.vault import Vault
+
+from urllib3.exceptions import InsecureRequestWarning
+
+# Usage of the consts file is recommended
+# from zcatman_consts import *
+
+# Suppress only the single warning from urllib3 needed.
+requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+
 
 class RetVal(tuple):
     def __new__(cls, val1, val2=None):
@@ -99,7 +99,7 @@ class ZcatmanConnector(BaseConnector):
 
             return False, response_data
 
-        except Exception as e:
+        except Exception:
             return False, "Request error: {}".format(traceback.format_exc())
 
     def _handle_test_connectivity(self, param):
@@ -112,6 +112,7 @@ class ZcatmanConnector(BaseConnector):
                 self.get_phantom_base_url_formatted(),
                 "/rest/container/",
                 method="get",
+                use_soar_auth=True,
             )
             if not status:
                 self.save_progress("Failed to login - {}".format(response))
@@ -123,7 +124,7 @@ class ZcatmanConnector(BaseConnector):
             return action_result.set_status(
                 phantom.APP_SUCCESS, "Test Connectivity Successful"
             )
-        except Exception as e:
+        except Exception:
             return action_result.set_status(phantom.APP_ERROR, traceback.format_exc())
 
     def get_phantom_base_url_formatted(self):
@@ -142,47 +143,69 @@ class ZcatmanConnector(BaseConnector):
                     err.message
                 ),
             )
-    
+
     def get_automation_key(self, username=None, user_id=None):
         if username:
             params = {"include_automation": True, "_filter_username": f'"{username}"'}
-            status, user_response = self._rest_call(self.get_phantom_base_url_formatted(), "/rest/ph_user", params=params, use_soar_auth=True)
+            status, user_response = self._rest_call(
+                self.get_phantom_base_url_formatted(),
+                "/rest/ph_user",
+                params=params,
+                use_soar_auth=True,
+            )
             if not status:
                 return False, "Invalid query"
-            if user_response['count'] == 0:
+            if user_response["count"] == 0:
                 return False, "Invalid username"
-            user_id = user_response['data'][0]['id']
+            user_id = user_response["data"][0]["id"]
         if user_id:
-            _, token_response = self._rest_call(self.get_phantom_base_url_formatted() + f'/rest/ph_user/{user_id}/token', method='get', use_soar_auth=True)) 
-            if token_response.get('key'):   
-                return True, token_response['key']
+            _, token_response = self._rest_call(
+                f"{self.get_phantom_base_url_formatted()}/rest/ph_user/{user_id}/token",
+                method="get",
+                use_soar_auth=True,
+            )
+            if token_response.get("key"):
+                return True, token_response["key"]
             else:
                 return False, "No automation toke found"
         return False, "Must provide username or user_id"
 
-    def create_user(self, username, password=None, generate_pass=True, automation=True, allowed_ips=None, roles=None):
-        data = {'username': username, 'roles': roles}
+    def create_user(
+        self,
+        username,
+        password=None,
+        generate_pass=True,
+        automation=True,
+        allowed_ips=None,
+        roles=None,
+    ):
+        data = {"username": username, "roles": roles}
 
         if automation:
-            data['type'] = 'automation'
-            data['allowed_ips'] = [allowed_ips]
+            data["type"] = "automation"
+            data["allowed_ips"] = [allowed_ips]
         else:
             if generate_pass:
                 alphabet = string.ascii_letters + string.digits + string.punctuation
-                password = ''.join(secrets.choice(alphabet) for i in range(20))
-            
-            data['password'] = password
+                password = "".join(secrets.choice(alphabet) for i in range(20))
 
-        status, response = self._rest_call(self.get_phantom_base_url_formatted() + '/rest/ph_user', method='post', json=data, use_soar_auth=True)
+            data["password"] = password
+
+        status, response = self._rest_call(
+            self.get_phantom_base_url_formatted() + "/rest/ph_user",
+            method="post",
+            json=data,
+            use_soar_auth=True,
+        )
         if not status:
-            if 'already exists' in response:
+            if "already exists" in response:
                 _, password = self.get_automation_key(username=username)
             else:
                 return False, f"Error creating user: {username}"
         elif automation:
-            password = self.get_automation_key(user_id=response['id'])
-        
-        return True, {'id': response['id'], 'password': password}
+            password = self.get_automation_key(user_id=response["id"])
+
+        return True, {"id": response["id"], "password": password}
 
     def _handle_container_labels(self, container_label):
         status, response = self._rest_call(
@@ -282,7 +305,7 @@ class ZcatmanConnector(BaseConnector):
             return (
                 asset_status,
                 "Unable to load assets. File - {}. Details - {}".format(
-                    file_, (str(asset_response) if asset_response else "None")
+                    asset_file_data, (str(asset_response) if asset_response else "None")
                 ),
             )
 
@@ -338,13 +361,13 @@ class ZcatmanConnector(BaseConnector):
             )
             if phantom.is_fail(status):
                 return False, "Unable to install app. File - {}. Details - {}".format(
-                    file_, (str(app_response) if app_response else "None")
+                    app_file[0], (str(app_response) if app_response else "None")
                 )
-        except Exception as err:
+        except Exception:
             return (
                 False,
                 "Error occurred during app install. File - {}. Error - {}".format(
-                    file_, traceback.format_exc()
+                    app_file[0], traceback.format_exc()
                 ),
             )
 
@@ -646,7 +669,7 @@ class ZcatmanConnector(BaseConnector):
                                 )
                             last_file.append(container_id)
 
-        except Exception as err:
+        except Exception:
             return False, "Error during container load - {}".format(
                 traceback.format_exc()
             )
@@ -724,7 +747,7 @@ class ZcatmanConnector(BaseConnector):
                         method="post",
                         data=user_file_data,
                     )
-                except Exception as err:
+                except Exception:
                     return False, "Unable to load user. File - {}. Details - {}".format(
                         file_, (str(user_response) if user_response else "None")
                     )
@@ -810,7 +833,7 @@ class ZcatmanConnector(BaseConnector):
         return True, "Successfully sought and destroyed"
 
     def update_assets(self, file_directory):
-        config = self.get_config()
+        # config = self.get_config()
         assets_dir = glob.glob("{}/*/assets".format(file_directory))
         if len(assets_dir) < 1:
             return False, "Unable to get assets from github data"
@@ -991,53 +1014,67 @@ class ZcatmanConnector(BaseConnector):
 
         return True, "Successfully loaded response templates"
 
-
-
     def update_system_settings_helper(self, system_settings_file):
+        import django
+
+        django.setup()
+        from phantom_ui.ui.models import PhUser, SystemSettings
+
         with open(system_settings_file[0], "r") as active_file:
             ss_json = json.loads(active_file.read())
         if ss_json:
-            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'phantom_ui.settings')
+            os.environ.setdefault("DJANGO_SETTINGS_MODULE", "phantom_ui.settings")
             django.setup()
             ss = SystemSettings.get_settings()
-            if ss_json.get('dummy_app'):
-                if ss_json['dummy_app'].get('create_automation_user'):
-                    roles = ['Automation']
-                    if ss_json.get('give_admin'):
-                        roles.append('Administrator')
-                    status, automation_account = self.create_user(username='soar_automation', automation=True, roles=roles, allowed_ips="any")
+            if ss_json.get("dummy_app"):
+                if ss_json["dummy_app"].get("create_automation_user"):
+                    roles = ["Automation"]
+                    if ss_json.get("give_admin"):
+                        roles.append("Administrator")
+                    status, automation_account = self.create_user(
+                        username="soar_automation",
+                        automation=True,
+                        roles=roles,
+                        allowed_ips="any",
+                    )
                     if not status:
                         return False, "Unable to create_automation_user"
-                    automation_token = automation_account['password']
-                elif ss_json['dummy_app'].get('automation_account'):
-                    status, automation_token = self.get_automation_key(username=ss_json['dummy_app']['automation_account'])
+                    automation_token = automation_account["password"]
+                elif ss_json["dummy_app"].get("automation_account"):
+                    status, automation_token = self.get_automation_key(
+                        username=ss_json["dummy_app"]["automation_account"]
+                    )
                     if not status:
                         return False, automation_token
                 ss.environment_variables = {
-                    'PHANTOM_API_KEY': {'type': 'password', 'value': encryption_helper.encrypt(automation_token, 'PHANTOM_API_KEY')},
-                    'NO_PROXY': {'type': 'text', 'value': '127.0.0.1,localhost'}
+                    "PHANTOM_API_KEY": {
+                        "type": "password",
+                        "value": encryption_helper.encrypt(
+                            automation_token, "PHANTOM_API_KEY"
+                        ),
+                    },
+                    "NO_PROXY": {"type": "text", "value": "127.0.0.1,localhost"},
                 }
-            if ss_json.get('administrator_contact'):
-                ss.administrator_contact = ss_json['administrator_contact']
-            if ss_json.get('company_name'):
-                ss.company_name = ss_json['company_name']
-            if ss_json.get('system_name'):
-                ss.system_name = ss_json['system_name']
-            if ss_json.get('eula_accepted'):
-                ss.eula_accepted = ss_json['eula_accepted']
-            if ss_json.get('fqdn'):
-                if ss_json['fqdn'] == '$$PHANTOM_BASE_URL$$':
+            if ss_json.get("administrator_contact"):
+                ss.administrator_contact = ss_json["administrator_contact"]
+            if ss_json.get("company_name"):
+                ss.company_name = ss_json["company_name"]
+            if ss_json.get("system_name"):
+                ss.system_name = ss_json["system_name"]
+            if ss_json.get("eula_accepted"):
+                ss.eula_accepted = ss_json["eula_accepted"]
+            if ss_json.get("fqdn"):
+                if ss_json["fqdn"] == "$$PHANTOM_BASE_URL$$":
                     ss.fqdn = self.get_phantom_base_url_formatted()
                 else:
-                    ss.fqdn = ss_json['fqdn']
+                    ss.fqdn = ss_json["fqdn"]
             ss.save(ignore_rabbit_error=True)
 
-            if ss_json.get('disable_admin_onboarding'):
-                admin_user = PhUser.objects.get(username='admin')
-                admin_user.profile.onboarding_state = {'redirect_onboarding': False}
+            if ss_json.get("disable_admin_onboarding"):
+                admin_user = PhUser.objects.get(username="admin")
+                admin_user.profile.onboarding_state = {"redirect_onboarding": False}
                 admin_user.profile.save()
                 admin_user.save()
-        
 
     def update_severity_settings_helper(self, severity_settings_file):
         with open(severity_settings_file[0], "r") as active_file:
@@ -1054,9 +1091,7 @@ class ZcatmanConnector(BaseConnector):
                 return status, "Unable to get existing severities - {}".format(
                     existing_severities
                 )
-            existing_severities = [
-                item["name"] for item in existing_severities["data"]
-            ]
+            existing_severities = [item["name"] for item in existing_severities["data"]]
 
             # Update severities
             for severity in custom_severities:
@@ -1100,7 +1135,7 @@ class ZcatmanConnector(BaseConnector):
         if system_settings:
             self.update_system_settings_helper(system_settings)
         if not severity_settings and not system_settings:
-             return False, "No compatible settings found in settings.json"
+            return False, "No compatible settings found in settings.json"
 
     def _handle_load_demo_data(self, param):
         try:
@@ -1267,7 +1302,7 @@ class ZcatmanConnector(BaseConnector):
             return action_result.set_status(
                 phantom.APP_SUCCESS, "Successfully loaded phantom demo data"
             )
-        except Exception as e:
+        except Exception:
             return action_result.set_status(phantom.APP_ERROR, traceback.format_exc())
 
     def _handle_run_script(self, param):
@@ -1305,7 +1340,7 @@ class ZcatmanConnector(BaseConnector):
                 stderr=subprocess.STDOUT,
             ).communicate()
         else:
-            args = json.loads(param.get("kwargs"))
+            # args = json.loads(param.get("kwargs"))
             stderr = "Haven't coded else condition yet. Sorry :shrug:"
             # todo:
             # stdout, stderr = subprocess.Popen(['phenv', 'python3.6', param.get('kwargs')], stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
