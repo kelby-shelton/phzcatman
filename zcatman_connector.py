@@ -121,6 +121,14 @@ class ZcatmanConnector(BaseConnector):
                     "Test Connectivity Failed - Unable to connect to Splunk SOAR - Check username and password",
                 )
             self.save_progress("Succesfully connected with username  + password")
+            self.save_progress("Checking for GitHub connectivity")
+            folder_list = self._list_github_folders()
+            if not folder_list:
+                return action_result.set_status(
+                    phantom.APP_ERROR,
+                    "No folders found in github repo and branch. Check github access token (if private repo), github repo path, and github branch were entered correctly.",
+                )
+            self.save_progress("Succesfully connected to GitHub")
             return action_result.set_status(
                 phantom.APP_SUCCESS, "Test Connectivity Successful"
             )
@@ -1148,7 +1156,7 @@ class ZcatmanConnector(BaseConnector):
             if not folder_list:
                 return action_result.set_status(
                     phantom.APP_ERROR,
-                    "No folders found in github repo and branch. Check github access token, github repo path, and github branch were entered correctly.",
+                    "No folders found in github repo and branch. Check github access token (if private repo), github repo path, and github branch were entered correctly.",
                 )
 
             supported_object_list = [
