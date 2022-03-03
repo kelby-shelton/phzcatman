@@ -546,7 +546,7 @@ class ZcatmanConnector(BaseConnector):
             last_file = []
             for root, dirs, files in os.walk(demo_container_dir[0]):
                 for file_ in files:
-                    if root.endswith("vault"):
+                    if "vault" in root:
                         vault_contents = None
                         with open(os.path.join(root, file_), "rb") as vault_file:
                             vault_contents = vault_file.read()
@@ -575,7 +575,7 @@ class ZcatmanConnector(BaseConnector):
                                         ),
                                     ),
                                 )
-                    elif ".json" in file_ and not (root.endswith("vault")):
+                    elif ".json" in file_ and "vault" not in root:
                         container_data = None
                         with open(os.path.join(root, file_), "r") as container_file:
                             container_data = container_file.read()
