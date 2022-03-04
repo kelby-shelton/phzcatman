@@ -384,26 +384,23 @@ class ZcatmanConnector(BaseConnector):
     def _list_github_folders(self):
         self.save_progress("Retrieving github folder list")
         folder_list = []
-        config = self.get_config()
 
         github_header = {}
 
-        if config.get("github_personal_access_token"):
+        if self.github_personal_access_token:
             github_header = {
-                "Authorization": "token {}".format(
-                    config["github_personal_access_token"]
-                )
+                "Authorization": "token {}".format(self.github_personal_access_token)
             }
 
         github_base_url = "https://api.github.com"
 
-        github_repo_path = config["github_repo_path"]
+        github_repo_path = self.github_repo_path
         if not (github_repo_path.startswith("/")):
             github_repo_path = "/{}".format(github_repo_path)
         if github_repo_path.endswith("/"):
             github_repo_path = github_repo_path[:-1]
 
-        github_branch = config["github_branch"].replace("/", "")
+        github_branch = self.github_branch.replace("/", "")
 
         github_endpoint = "/repos{}/contents/?ref={}".format(
             github_repo_path, github_branch
@@ -421,26 +418,22 @@ class ZcatmanConnector(BaseConnector):
 
     def _get_github_data(self):
         self.save_progress("Retrieving github demo data")
-        config = self.get_config()
-
         github_header = {}
 
-        if config.get("github_personal_access_token"):
+        if self.github_personal_access_token:
             github_header = {
-                "Authorization": "token {}".format(
-                    config["github_personal_access_token"]
-                )
+                "Authorization": "token {}".format(self.github_personal_access_token)
             }
 
         github_base_url = "https://api.github.com"
 
-        github_repo_path = config["github_repo_path"]
+        github_repo_path = self.github_repo_path
         if not (github_repo_path.startswith("/")):
             github_repo_path = "/{}".format(github_repo_path)
         if github_repo_path.endswith("/"):
             github_repo_path = github_repo_path[:-1]
 
-        github_tarball_path = "/tarball/" + config["github_branch"].replace("/", "")
+        github_tarball_path = "/tarball/" + self.github_branch.replace("/", "")
 
         github_endpoint = "/repos{}{}".format(github_repo_path, github_tarball_path)
 
@@ -554,6 +547,10 @@ class ZcatmanConnector(BaseConnector):
             last_file = []
             for root, dirs, files in os.walk(demo_container_dir[0]):
                 for file_ in files:
+<<<<<<< HEAD
+                    container_folder_path = root.split(github_path)[1]
+                    if ".json" in file_ and "vault" not in container_folder_path:
+=======
                     if "vault" in root:
                         vault_contents = None
                         with open(os.path.join(root, file_), "rb") as vault_file:
@@ -584,6 +581,7 @@ class ZcatmanConnector(BaseConnector):
                                     ),
                                 )
                     elif ".json" in file_ and "vault" not in root:
+>>>>>>> 8902d5c4324906ef971eb418471e32fedf6dd138
                         container_data = None
                         with open(os.path.join(root, file_), "r") as container_file:
                             container_data = container_file.read()
@@ -676,6 +674,35 @@ class ZcatmanConnector(BaseConnector):
                                     ),
                                 )
                             last_file.append(container_id)
+                    elif "vault" in container_folder_path:
+                        vault_contents = None
+                        with open(os.path.join(root, file_), "rb") as vault_file:
+                            vault_contents = vault_file.read()
+                        serialized_contents = b64encode(vault_contents)
+                        for container_id in last_file:
+                            attachment_json = {
+                                "container_id": container_id,
+                                "file_content": serialized_contents.decode("utf-8"),
+                                "file_name": file_,
+                            }
+                            status, vault_response = self._rest_call(
+                                self.get_phantom_base_url_formatted(),
+                                "/rest/container_attachment",
+                                method="post",
+                                json=attachment_json,
+                            )
+                            if not (status):
+                                return (
+                                    False,
+                                    "Unable to upload vault data. File - {}. Details - {}".format(
+                                        file_,
+                                        (
+                                            str(vault_response)
+                                            if vault_response
+                                            else "None"
+                                        ),
+                                    ),
+                                )
 
         except Exception:
             return False, "Error during container load - {}".format(
@@ -912,7 +939,7 @@ class ZcatmanConnector(BaseConnector):
     def update_playbooks(self, file_directory):
         playbooks_dir = glob.glob("{}/*/playbooks".format(file_directory))
         settings_json = glob.glob(
-            "{}/*/playbooks/playbook_settings.json".format(file_directory)
+            "{}/*/custom_settings/playbook_settings.json".format(file_directory)
         )
         # pull in list of playbooks that should be active
         if settings_json:
@@ -1391,6 +1418,9 @@ class ZcatmanConnector(BaseConnector):
         config = self.get_config()
         self.soar_username = config["soar_username"]
         self.soar_password = config["soar_password"]
+        self.github_repo_path = config["github_repo_path"]
+        self.github_personal_access_token = config["github_personal_access_token"]
+        self.github_branch = config["github_branch"]
 
         return phantom.APP_SUCCESS
 
