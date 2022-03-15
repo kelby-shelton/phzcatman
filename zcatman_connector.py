@@ -1053,7 +1053,10 @@ class ZcatmanConnector(BaseConnector):
                             allowed_ips="any",
                         )
                         if not status:
-                            return False, "Unable to create_automation_user"
+                            return (
+                                False,
+                                f"Unable to create_automation_user - {automation_account}",
+                            )
                         automation_token = automation_account["password"]
                     elif ss_json["dummy_app"].get("automation_account"):
                         status, automation_token = self.get_automation_key(
@@ -1090,6 +1093,7 @@ class ZcatmanConnector(BaseConnector):
                     admin_user.profile.onboarding_state = {"redirect_onboarding": False}
                     admin_user.profile.save()
                     admin_user.save()
+
         return True, "- Loaded system settings"
 
     def update_severity_settings_helper(self, severity_settings_file):
@@ -1149,9 +1153,12 @@ class ZcatmanConnector(BaseConnector):
             status, severity_message = self.update_severity_settings_helper(
                 severity_settings
             )
+            if not status:
+                return status, severity_message
         if system_settings:
             status, system_message = self.update_system_settings_helper(system_settings)
-
+            if not status:
+                return status, system_message
         message = (
             f"Successfully loaded custom settings "
             f"{severity_message if severity_message else None}"
