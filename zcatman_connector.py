@@ -2,7 +2,7 @@
 # Copyright (c) 2020-2021 Splunk Inc.
 #
 # SPLUNK CONFIDENTIAL - Use or disclosure of this material in whole or in part
-# without a valid written license from Splunk Inc. is PROHIBITED.#!/usr/bin/python
+# without a valid written license from Splunk Inc. is PROHIBITED.
 # -*- coding: utf-8 -*-
 # -----------------------------------------
 # Phantom sample App Connector python file
@@ -67,7 +67,7 @@ class ZcatmanConnector(BaseConnector):
         except AttributeError:
             return False, "invalid method: {}".format(method)
 
-        url = "{base_url}{endpoint}".format(base_url=base_url, endpoint=endpoint)
+        url = f"{base_url}{endpoint}"
 
         response_data = None
 
@@ -103,7 +103,8 @@ class ZcatmanConnector(BaseConnector):
             return False, "Request error: {}".format(traceback.format_exc())
 
     def _handle_test_connectivity(self, param):
-        # Add an action result object to self (BaseConnector) to represent the action for this param
+        # Add an action result object to self (BaseConnector)
+        # to represent the action for this param
         action_result = self.add_action_result(ActionResult(dict(param)))
         self.save_progress("Testing Connectivity to Splunk SOAR Instance")
         try:
@@ -118,15 +119,19 @@ class ZcatmanConnector(BaseConnector):
                 self.save_progress("Failed to login - {}".format(response))
                 return action_result.set_status(
                     phantom.APP_ERROR,
-                    "Test Connectivity Failed - Unable to connect to Splunk SOAR - Check username and password",
+                    "Test Connectivity Failed - "
+                    "Unable to connect to Splunk SOAR - "
+                    "Check username and password",
                 )
-            self.save_progress("Succesfully connected with username  + password")
+            self.save_progress("Succesfully connected with username + password")
             self.save_progress("Checking for GitHub connectivity")
             folder_list = self._list_github_folders()
             if not folder_list:
                 return action_result.set_status(
                     phantom.APP_ERROR,
-                    "No folders found in github repo and branch. Check github access token (if private repo), github repo path, and github branch were entered correctly.",
+                    "No folders found in github repo and branch. "
+                    "Check if github access token ,github repo path, "
+                    "or github branch  correctly.",
                 )
             self.save_progress("Succesfully connected to GitHub")
             return action_result.set_status(
@@ -168,7 +173,8 @@ class ZcatmanConnector(BaseConnector):
             user_id = user_response["data"][0]["id"]
         if user_id:
             _, token_response = self._rest_call(
-                f"{self.get_phantom_base_url_formatted()}/rest/ph_user/{user_id}/token",
+                self.get_phantom_base_url_formatted(),
+                f"/rest/ph_user/{user_id}/token",
                 method="get",
                 use_soar_auth=True,
             )
@@ -200,7 +206,8 @@ class ZcatmanConnector(BaseConnector):
             data["password"] = password
 
         status, response = self._rest_call(
-            self.get_phantom_base_url_formatted() + "/rest/ph_user",
+            self.get_phantom_base_url_formatted(),
+            "/rest/ph_user",
             method="post",
             json=data,
             use_soar_auth=True,
@@ -265,9 +272,10 @@ class ZcatmanConnector(BaseConnector):
             if not (status):
                 return action_result.set_status(
                     phantom.APP_ERROR,
-                    "Whoops. That didn't work. If you're trying to update a demo_configuration container, you'll need to delete it first. Hopefully that won't be a requirement forever, but it is for now. Deal with it. Details - {}".format(
-                        (str(response) if response else "None")
-                    ),
+                    f"Whoops. That didn't work. "
+                    f"If you're trying to update a demo_configuration container, you'll need to delete it first. "
+                    f"Hopefully that won't be a requirement forever, but it is for now. Deal with it. "
+                    f"Details - {str(response) if response else None}",
                 )
         elif "compiled_apps/" in github_path.lower():
             status, response = self.update_an_app(untar_response, github_path)
@@ -1017,67 +1025,72 @@ class ZcatmanConnector(BaseConnector):
         return True, "Successfully loaded response templates"
 
     def update_system_settings_helper(self, system_settings_file):
+        import sys
+
+        if not hasattr(sys, "argv"):
+            sys.argv = [""]
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "phantom_ui.settings")
         import django
 
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "phantom_ui.settings")
         django.setup()
-        from phantom_ui.ui.models import PhUser, SystemSettings
+        from phantom_ui.ui.models import SystemSettings, PhUser
+
+        ss = SystemSettings.get_settings()
 
         with open(system_settings_file[0], "r") as active_file:
             ss_json = json.loads(active_file.read())
-        if ss_json:
-            os.environ.setdefault("DJANGO_SETTINGS_MODULE", "phantom_ui.settings")
-            django.setup()
-            ss = SystemSettings.get_settings()
-            if ss_json.get("dummy_app"):
-                if ss_json["dummy_app"].get("create_automation_user"):
-                    roles = ["Automation"]
-                    if ss_json.get("give_admin"):
-                        roles.append("Administrator")
-                    status, automation_account = self.create_user(
-                        username="soar_automation",
-                        automation=True,
-                        roles=roles,
-                        allowed_ips="any",
-                    )
-                    if not status:
-                        return False, "Unable to create_automation_user"
-                    automation_token = automation_account["password"]
-                elif ss_json["dummy_app"].get("automation_account"):
-                    status, automation_token = self.get_automation_key(
-                        username=ss_json["dummy_app"]["automation_account"]
-                    )
-                    if not status:
-                        return False, automation_token
-                ss.environment_variables = {
-                    "PHANTOM_API_KEY": {
-                        "type": "password",
-                        "value": encryption_helper.encrypt(
-                            automation_token, "PHANTOM_API_KEY"
-                        ),
-                    },
-                    "NO_PROXY": {"type": "text", "value": "127.0.0.1,localhost"},
-                }
-            if ss_json.get("administrator_contact"):
-                ss.administrator_contact = ss_json["administrator_contact"]
-            if ss_json.get("company_name"):
-                ss.company_name = ss_json["company_name"]
-            if ss_json.get("system_name"):
-                ss.system_name = ss_json["system_name"]
-            if ss_json.get("eula_accepted"):
-                ss.eula_accepted = ss_json["eula_accepted"]
-            if ss_json.get("fqdn"):
-                if ss_json["fqdn"] == "$$PHANTOM_BASE_URL$$":
-                    ss.fqdn = self.get_phantom_base_url_formatted()
-                else:
-                    ss.fqdn = ss_json["fqdn"]
-            ss.save(ignore_rabbit_error=True)
 
-            if ss_json.get("disable_admin_onboarding"):
-                admin_user = PhUser.objects.get(username="admin")
-                admin_user.profile.onboarding_state = {"redirect_onboarding": False}
-                admin_user.profile.save()
-                admin_user.save()
+            if ss_json:
+                if ss_json.get("dummy_app"):
+                    if ss_json["dummy_app"].get("create_automation_user"):
+                        roles = ["Automation"]
+                        if ss_json.get("give_admin"):
+                            roles.append("Administrator")
+                        status, automation_account = self.create_user(
+                            username="soar_automation",
+                            automation=True,
+                            roles=roles,
+                            allowed_ips="any",
+                        )
+                        if not status:
+                            return False, "Unable to create_automation_user"
+                        automation_token = automation_account["password"]
+                    elif ss_json["dummy_app"].get("automation_account"):
+                        status, automation_token = self.get_automation_key(
+                            username=ss_json["dummy_app"]["automation_account"]
+                        )
+                        if not status:
+                            return False, automation_token
+                    ss.environment_variables = {
+                        "PHANTOM_API_KEY": {
+                            "type": "password",
+                            "value": encryption_helper.encrypt(
+                                automation_token, "PHANTOM_API_KEY"
+                            ),
+                        },
+                        "NO_PROXY": {"type": "text", "value": "127.0.0.1,localhost"},
+                    }
+                if ss_json.get("administrator_contact"):
+                    ss.administrator_contact = ss_json["administrator_contact"]
+                if ss_json.get("company_name"):
+                    ss.company_name = ss_json["company_name"]
+                if ss_json.get("system_name"):
+                    ss.system_name = ss_json["system_name"]
+                if ss_json.get("eula_accepted"):
+                    ss.eula_accepted = ss_json["eula_accepted"]
+                if ss_json.get("fqdn"):
+                    if ss_json["fqdn"] == "$$PHANTOM_BASE_URL$$":
+                        ss.fqdn = self.get_phantom_base_url_formatted()
+                    else:
+                        ss.fqdn = ss_json["fqdn"]
+                ss.save(ignore_rabbit_error=True)
+
+                if ss_json.get("disable_admin_onboarding"):
+                    admin_user = PhUser.objects.get(username="admin")
+                    admin_user.profile.onboarding_state = {"redirect_onboarding": False}
+                    admin_user.profile.save()
+                    admin_user.save()
+        return True, "- Loaded system settings"
 
     def update_severity_settings_helper(self, severity_settings_file):
         with open(severity_settings_file[0], "r") as active_file:
@@ -1123,7 +1136,7 @@ class ZcatmanConnector(BaseConnector):
                     severity_order, response
                 )
 
-        return True, "Succesfully loaded custom_settings"
+        return True, "- Loaded custom_settings"
 
     def custom_settings_handler(self, file_directory):
         severity_settings = glob.glob(
@@ -1132,13 +1145,20 @@ class ZcatmanConnector(BaseConnector):
         system_settings = glob.glob(
             "{}/*/custom_settings/system_settings.json".format(file_directory)
         )
-        # pull in list of custom severities
         if severity_settings:
-            self.update_severity_settings_helper(severity_settings)
+            status, severity_message = self.update_severity_settings_helper(
+                severity_settings
+            )
         if system_settings:
-            self.update_system_settings_helper(system_settings)
-        if not severity_settings and not system_settings:
-            return False, "No compatible settings found in settings.json"
+            status, system_message = self.update_system_settings_helper(system_settings)
+
+        message = (
+            f"Successfully updated custom settings "
+            f"{severity_message if severity_message else None}"
+            f"{system_message if system_message else None}"
+        )
+
+        return True, message
 
     def _handle_load_demo_data(self, param):
         try:
