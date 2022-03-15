@@ -547,41 +547,8 @@ class ZcatmanConnector(BaseConnector):
             last_file = []
             for root, dirs, files in os.walk(demo_container_dir[0]):
                 for file_ in files:
-<<<<<<< HEAD
                     container_folder_path = root.split(github_path)[1]
                     if ".json" in file_ and "vault" not in container_folder_path:
-=======
-                    if "vault" in root:
-                        vault_contents = None
-                        with open(os.path.join(root, file_), "rb") as vault_file:
-                            vault_contents = vault_file.read()
-                        serialized_contents = b64encode(vault_contents)
-                        for container_id in last_file:
-                            attachment_json = {
-                                "container_id": container_id,
-                                "file_content": serialized_contents.decode("utf-8"),
-                                "file_name": file_,
-                            }
-                            status, vault_response = self._rest_call(
-                                self.get_phantom_base_url_formatted(),
-                                "/rest/container_attachment",
-                                method="post",
-                                json=attachment_json,
-                            )
-                            if not (status):
-                                return (
-                                    False,
-                                    "Unable to upload vault data. File - {}. Details - {}".format(
-                                        file_,
-                                        (
-                                            str(vault_response)
-                                            if vault_response
-                                            else "None"
-                                        ),
-                                    ),
-                                )
-                    elif ".json" in file_ and "vault" not in root:
->>>>>>> 8902d5c4324906ef971eb418471e32fedf6dd138
                         container_data = None
                         with open(os.path.join(root, file_), "r") as container_file:
                             container_data = container_file.read()
