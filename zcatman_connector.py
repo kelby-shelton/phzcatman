@@ -1136,7 +1136,7 @@ class ZcatmanConnector(BaseConnector):
                     severity_order, response
                 )
 
-        return True, "- Loaded custom_settings"
+        return True, "- Loaded custom severities"
 
     def custom_settings_handler(self, file_directory):
         severity_settings = glob.glob(
@@ -1153,7 +1153,7 @@ class ZcatmanConnector(BaseConnector):
             status, system_message = self.update_system_settings_helper(system_settings)
 
         message = (
-            f"Successfully updated custom settings "
+            f"Successfully loaded custom settings "
             f"{severity_message if severity_message else None}"
             f"{system_message if system_message else None}"
         )
