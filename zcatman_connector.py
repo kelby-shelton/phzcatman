@@ -1019,6 +1019,7 @@ class ZcatmanConnector(BaseConnector):
     def update_system_settings_helper(self, system_settings_file):
         import django
 
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "phantom_ui.settings")
         django.setup()
         from phantom_ui.ui.models import PhUser, SystemSettings
 
