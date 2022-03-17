@@ -159,18 +159,7 @@ class ZcatmanConnector(BaseConnector):
 
     def get_automation_key(self, username=None, user_id=None):
         if username:
-            params = {"include_automation": True, "_filter_username": f'"{username}"'}
-            status, user_response = self._rest_call(
-                self.get_phantom_base_url_formatted(),
-                "/rest/ph_user",
-                params=params,
-                use_soar_auth=True,
-            )
-            if not status:
-                return False, "Invalid query"
-            if user_response["count"] == 0:
-                return False, "Invalid username"
-            user_id = user_response["data"][0]["id"]
+            user_id = self.get_user_id(username)
         if user_id:
             _, token_response = self._rest_call(
                 self.get_phantom_base_url_formatted(),
@@ -183,6 +172,20 @@ class ZcatmanConnector(BaseConnector):
             else:
                 return False, "No automation toke found"
         return False, "Must provide username or user_id"
+
+    def get_user_id(self, username):
+        params = {"include_automation": True, "_filter_username": f'"{username}"'}
+        status, user_response = self._rest_call(
+            self.get_phantom_base_url_formatted(),
+            "/rest/ph_user",
+            params=params,
+            use_soar_auth=True,
+        )
+        if not status:
+            return False
+        if user_response["count"] == 0:
+            return False
+        return user_response["data"][0]["id"]
 
     def create_user(
         self,
@@ -212,15 +215,14 @@ class ZcatmanConnector(BaseConnector):
             json=data,
             use_soar_auth=True,
         )
-        if not status:
-            if "already exists" in response:
-                _, password = self.get_automation_key(username=username)
-            else:
-                return False, f"Error creating user: {username}"
-        elif automation:
-            password = self.get_automation_key(user_id=response["id"])
+        if not status and "already exists" not in response.get("message", ""):
+            return False, f"Error creating user: {username}"
 
-        return True, {"id": response["id"], "password": password}
+        user_id = response.get("id", self.get_user_id(username))
+        if automation:
+            _, password = self.get_automation_key(user_id=user_id)
+
+        return True, {"id": user_id, "password": password}
 
     def _handle_container_labels(self, container_label):
         status, response = self._rest_call(
@@ -1161,7 +1163,7 @@ class ZcatmanConnector(BaseConnector):
                 return status, system_message
         message = (
             f"Successfully loaded custom settings "
-            f"{severity_message if severity_message else None}"
+            f"{severity_message if severity_message else None} "
             f"{system_message if system_message else None}"
         )
 
