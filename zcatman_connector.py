@@ -1162,11 +1162,11 @@ class ZcatmanConnector(BaseConnector):
             status, system_message = self.update_system_settings_helper(system_settings)
             if not status:
                 return status, system_message
-        message = (
-            f"Successfully loaded custom settings "
-            f"{severity_message if severity_message else None} "
-            f"{system_message if system_message else None}"
-        )
+        message = "Successfully loaded custom settings. "
+        if severity_message:
+            message += severity_message
+        if system_message:
+            message += system_message
 
         return True, message
 
