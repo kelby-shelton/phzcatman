@@ -865,7 +865,6 @@ class ZcatmanConnector(BaseConnector):
                             file_, response
                         ),
                     )
-                # asset_file_data = asset_file_data.replace('$$$PH_AUTH_TOKEN$$$', config['phantom_api_key']).replace('$$$PH_SERVER_NAME$$$', self.get_phantom_base_url_formatted().replace('https://', '').replace('http://', ''))
                 asset_status, asset_response = self._rest_call(
                     self.get_phantom_base_url_formatted(),
                     "/rest/asset",
@@ -1145,6 +1144,8 @@ class ZcatmanConnector(BaseConnector):
         return True, "- Loaded custom severities"
 
     def custom_settings_handler(self, file_directory):
+        system_message = None
+        severity_message = None
         severity_settings = glob.glob(
             "{}/*/custom_settings/severity_settings.json".format(file_directory)
         )
