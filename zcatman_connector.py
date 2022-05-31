@@ -10,8 +10,6 @@
 
 # Python 3 Compatibility imports
 from __future__ import print_function, unicode_literals
-
-import encryption_helper
 import glob
 import json
 import os
@@ -186,6 +184,38 @@ class ZcatmanConnector(BaseConnector):
         if user_response["count"] == 0:
             return False
         return user_response["data"][0]["id"]
+
+    def get_role_id(self, role_name):
+        params = {"_filter_name": f'"{role_name}"'}
+        status, role_response = self._rest_call(
+            self.get_phantom_base_url_formatted(),
+            "/rest/role",
+            params=params,
+            use_soar_auth=True,
+        )
+        if not status:
+            return False
+        if role_response["count"] == 0:
+            return False
+        return role_response["data"][0]["id"]
+
+    def add_role_to_user(self, username, role_name):
+        user_id = self.get_user_id(username)
+        role_id = self.get_role_id(role_name)
+        if user_id and role_id:
+            data = {
+                "add_roles": [role_id]
+            }
+            status, update_message = self._rest_call(
+                self.get_phantom_base_url_formatted(),
+                f"/rest/ph_user/{user_id}",
+                method='post',
+                json=data,
+                use_soar_auth=True,
+            )
+            if status:
+                return True
+        return False
 
     def create_user(
         self,
@@ -920,7 +950,7 @@ class ZcatmanConnector(BaseConnector):
         # pull in list of playbooks that should be active
         if settings_json:
             with open(settings_json[0], "r") as active_file:
-                active_playbooks = json.loads(active_file.read())["active_playbooks"]
+                active_playbooks = json.loads(active_file.read()).get("active_playbooks")
         else:
             active_playbooks = None
         for root, dirs, files in os.walk(playbooks_dir[0]):
@@ -1025,27 +1055,40 @@ class ZcatmanConnector(BaseConnector):
 
         return True, "Successfully loaded response templates"
 
+    def set_up_session(self):
+        s = requests.Session()
+        s.verify = False
+        url = self.get_phantom_base_url_formatted()
+        r = s.get(url + '/login', verify=False)
+        s.headers['Referer'] = url + '/login'
+        csrf = r.cookies['csrftoken']
+        login_resp = s.post(
+            url + '/login',
+            data={
+                'username': self.soar_username,
+                'password': self.soar_password,
+                'csrfmiddlewaretoken': csrf
+            },
+            verify=False
+        )
+        login_resp.raise_for_status()
+        s.session_id = s.cookies["sessionid"]
+        csrf = s.cookies['csrftoken']
+        s.headers['X-CSRFToken'] = csrf
+        return s
+
     def update_system_settings_helper(self, system_settings_file):
-        import sys
-
-        if not hasattr(sys, "argv"):
-            sys.argv = [""]
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "phantom_ui.settings")
-        import django
-
-        django.setup()
-        from phantom_ui.ui.models import SystemSettings, PhUser
-
-        ss = SystemSettings.get_settings()
 
         with open(system_settings_file[0], "r") as active_file:
             ss_json = json.loads(active_file.read())
 
             if ss_json:
+                if ss_json.get('add_admin_to_automation_user'):
+                    self.add_role_to_user(username="automation", role_name="Administrator")
                 if ss_json.get("dummy_app"):
                     if ss_json["dummy_app"].get("create_automation_user"):
                         roles = ["Automation"]
-                        if ss_json.get("give_admin"):
+                        if ss_json["dummy_app"].get("give_admin"):
                             roles.append("Administrator")
                         status, automation_account = self.create_user(
                             username="soar_automation",
@@ -1065,35 +1108,49 @@ class ZcatmanConnector(BaseConnector):
                         )
                         if not status:
                             return False, automation_token
-                    ss.environment_variables = {
-                        "PHANTOM_API_KEY": {
-                            "type": "password",
-                            "value": encryption_helper.encrypt(
-                                automation_token, "PHANTOM_API_KEY"
-                            ),
-                        },
-                        "NO_PROXY": {"type": "text", "value": "127.0.0.1,localhost"},
+                    envvars_data = {
+                            "env-DUMMY_API_URL-name": "DUMMY_API_URL",
+                            "env-DUMMY_API_URL-type": "text",
+                            "env-DUMMY_API_URL-value": ss_json['dummy_app'].get('dummy_api_url', ''),
+                            "env-DUMMY_API_LOCATION-name": "DUMMY_API_LOCATION",
+                            "env-DUMMY_API_LOCATION-type": "text",
+                            "env-DUMMY_API_LOCATION-value": ss_json['dummy_app'].get('dummy_api_location', ''),
+                            "env-DUMMY_API_TOKEN-name": "DUMMY_API_TOKEN",
+                            "env-DUMMY_API_TOKEN-type": "password",
+                            "env-DUMMY_API_TOKEN-value": ss_json['dummy_app'].get('dummy_api_token', ''),
+                            "env-NO_PROXY-name": "NO_PROXY",
+                            "env-NO_PROXY-type": "text",
+                            "env-NO_PROXY-value": "127.0.0.1,localhost"
                     }
-                if ss_json.get("administrator_contact"):
-                    ss.administrator_contact = ss_json["administrator_contact"]
-                if ss_json.get("company_name"):
-                    ss.company_name = ss_json["company_name"]
-                if ss_json.get("system_name"):
-                    ss.system_name = ss_json["system_name"]
+                    soar_session = self.set_up_session()
+                    resp = soar_session.post(
+                        self.get_phantom_base_url_formatted() + '/admin/admin_settings/envvars/',
+                        data=envvars_data, verify=False
+                    )
+                    resp.raise_for_status()
+ 
                 if ss_json.get("eula_accepted"):
-                    ss.eula_accepted = ss_json["eula_accepted"]
+                    self._rest_call(self.get_phantom_base_url_formatted(), '/rest/accept_eula', json={}, method='post')
+                system_settings = {}
+                if ss_json.get("administrator_contact"):
+                    system_settings['administrator_contact'] = ss_json["administrator_contact"]
+                if ss_json.get("company_name"):
+                    system_settings['company_name'] = ss_json["company_name"]
+                if ss_json.get("system_name"):
+                    system_settings['system_name'] = ss_json["system_name"]
                 if ss_json.get("fqdn"):
                     if ss_json["fqdn"] == "$$PHANTOM_BASE_URL$$":
-                        ss.fqdn = self.get_phantom_base_url_formatted()
+                        system_settings['fqdn'] = self.get_phantom_base_url_formatted()
                     else:
-                        ss.fqdn = ss_json["fqdn"]
-                ss.save(ignore_rabbit_error=True)
-
+                        system_settings['fqdn'] = ss_json["fqdn"]
+                if system_settings:
+                    self._rest_call(self.get_phantom_base_url_formatted(), '/rest/system_settings/info', json=system_settings, method='post')
                 if ss_json.get("disable_admin_onboarding"):
-                    admin_user = PhUser.objects.get(username="admin")
-                    admin_user.profile.onboarding_state = {"redirect_onboarding": False}
-                    admin_user.profile.save()
-                    admin_user.save()
+                    admin_settings = {
+                        "show_onboarding": False,
+                        "onboarding_state": {"redirect_onboarding": False}
+                    }
+                    self._rest_call(self.get_phantom_base_url_formatted(), '/rest/ph_user/1', json=admin_settings, method='post')
 
         return True, "- Loaded system settings"
 
@@ -1361,10 +1418,13 @@ class ZcatmanConnector(BaseConnector):
         else:
             config = None
         if config:
+            _, automation_token = self.get_automation_key(username='automation')
+            config['phantom_base_url'] = self.get_phantom_base_url_formatted()
+            config['phantom_api_key'] = automation_token
             stdout, stderr = subprocess.Popen(
                 [
                     "phenv",
-                    "python3.6",
+                    "python",
                     scripts_file[0],
                     "--config",
                     "{}".format(json.dumps(config)),
