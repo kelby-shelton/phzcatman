@@ -1151,7 +1151,11 @@ class ZcatmanConnector(BaseConnector):
                         "onboarding_state": {"redirect_onboarding": False}
                     }
                     self._rest_call(self.get_phantom_base_url_formatted(), '/rest/ph_user/1', json=admin_settings, method='post')
-
+                if ss_json.get('load_license'):
+                    license_data = {
+                        'license': ss_json['load_license']
+                    }
+                    self._rest_call(self.get_phantom_base_url_formatted(), '/rest/license', json=license_data, method='post')
         return True, "- Loaded system settings"
 
     def update_severity_settings_helper(self, severity_settings_file):
