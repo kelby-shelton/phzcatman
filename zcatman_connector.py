@@ -1085,10 +1085,10 @@ class ZcatmanConnector(BaseConnector):
             if ss_json:
                 if ss_json.get('add_admin_to_automation_user'):
                     self.add_role_to_user(username="automation", role_name="Administrator")
-                if ss_json.get("dummy_app"):
-                    if ss_json["dummy_app"].get("create_automation_user"):
+                if ss_json.get("mock_app"):
+                    if ss_json["mock_app"].get("create_automation_user"):
                         roles = ["Automation"]
-                        if ss_json["dummy_app"].get("give_admin"):
+                        if ss_json["mock_app"].get("give_admin"):
                             roles.append("Administrator")
                         status, automation_account = self.create_user(
                             username="soar_automation",
@@ -1102,22 +1102,22 @@ class ZcatmanConnector(BaseConnector):
                                 f"Unable to create_automation_user - {automation_account}",
                             )
                         automation_token = automation_account["password"]
-                    elif ss_json["dummy_app"].get("automation_account"):
+                    elif ss_json["mock_app"].get("automation_account"):
                         status, automation_token = self.get_automation_key(
-                            username=ss_json["dummy_app"]["automation_account"]
+                            username=ss_json["mock_app"]["automation_account"]
                         )
                         if not status:
                             return False, automation_token
                     envvars_data = {
-                            "env-DUMMY_API_URL-name": "DUMMY_API_URL",
-                            "env-DUMMY_API_URL-type": "text",
-                            "env-DUMMY_API_URL-value": ss_json['dummy_app'].get('dummy_api_url', ''),
-                            "env-DUMMY_API_LOCATION-name": "DUMMY_API_LOCATION",
-                            "env-DUMMY_API_LOCATION-type": "text",
-                            "env-DUMMY_API_LOCATION-value": ss_json['dummy_app'].get('dummy_api_location', ''),
-                            "env-DUMMY_API_TOKEN-name": "DUMMY_API_TOKEN",
-                            "env-DUMMY_API_TOKEN-type": "password",
-                            "env-DUMMY_API_TOKEN-value": ss_json['dummy_app'].get('dummy_api_token', ''),
+                            "env-MOCK_API_URL-name": "MOCK_API_URL",
+                            "env-MOCK_API_URL-type": "text",
+                            "env-MOCK_API_URL-value": ss_json['mock_app'].get('mock_api_url', ''),
+                            "env-MOCK_API_LOCATION-name": "MOCK_API_LOCATION",
+                            "env-MOCK_API_LOCATION-type": "text",
+                            "env-MOCK_API_LOCATION-value": ss_json['mock_app'].get('mock_api_location', ''),
+                            "env-MOCK_API_TOKEN-name": "MOCK_API_TOKEN",
+                            "env-MOCK_API_TOKEN-type": "password",
+                            "env-MOCK_API_TOKEN-value": ss_json['mock_app'].get('mock_api_token', ''),
                             "env-NO_PROXY-name": "NO_PROXY",
                             "env-NO_PROXY-type": "text",
                             "env-NO_PROXY-value": "127.0.0.1,localhost"
