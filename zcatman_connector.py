@@ -885,9 +885,12 @@ class ZcatmanConnector(BaseConnector):
                 print(file_)
                 with open(os.path.join(root, file_), "r") as asset_file:
                     asset_file_data = asset_file.read()
+                # Comment out seek and destroy since overwriting existing assets is no longer desirable
+                ''' 
                 status, response = self.seek_and_destroy(
                     "asset", json.loads(asset_file_data)
                 )
+                
                 if not (status):
                     return (
                         status,
@@ -895,6 +898,7 @@ class ZcatmanConnector(BaseConnector):
                             file_, response
                         ),
                     )
+                '''
                 asset_status, asset_response = self._rest_call(
                     self.get_phantom_base_url_formatted(),
                     "/rest/asset",
@@ -902,12 +906,15 @@ class ZcatmanConnector(BaseConnector):
                     method="post",
                 )
                 if not (asset_status):
-                    return (
-                        asset_status,
-                        "Unable to load assets. File - {}. Details - {}".format(
-                            file_, (str(asset_response) if asset_response else "None")
-                        ),
-                    )
+                    if asset_response.get('message', '') == 'Error: Asset name already in use.':
+                        continue
+                    else:
+                        return (
+                            asset_status,
+                            "Unable to load assets. File - {}. Details - {}".format(
+                                file_, (str(asset_response) if asset_response else "None")
+                            ),
+                        )
 
         return True, "Successfully loaded assets"
 
@@ -1059,17 +1066,19 @@ class ZcatmanConnector(BaseConnector):
         s = requests.Session()
         s.verify = False
         url = self.get_phantom_base_url_formatted()
-        r = s.get(url + '/login', verify=False)
-        s.headers['Referer'] = url + '/login'
-        csrf = r.cookies['csrftoken']
+        s.headers['Referer'] = url + '/soar_login'
+        response = s.get(url + '/soar_login', verify=False)
+        if response.status_code == 404:
+            s.headers['Referer'] = url + '/login'
+            s.get(url + 'login', verify=False)
+        csrf = response.cookies['csrftoken']
         login_resp = s.post(
             url + '/login',
             data={
                 'username': self.soar_username,
                 'password': self.soar_password,
                 'csrfmiddlewaretoken': csrf
-            },
-            verify=False
+            }, verify=False
         )
         login_resp.raise_for_status()
         s.session_id = s.cookies["sessionid"]
