@@ -138,6 +138,22 @@ class ZcatmanConnector(BaseConnector):
         except Exception:
             return action_result.set_status(phantom.APP_ERROR, traceback.format_exc())
 
+    def get_instance_name(self):
+        try:
+            _, settings_response = self._rest_call(
+                self.get_phantom_base_url_formatted(),
+                f"/rest/system_settings",
+                method="get",
+                use_soar_auth=True,
+            )
+            if settings_response.get('company_info_settings'):
+                return True, settings_response['company_info_settings']['system_name']
+        except Exception as e:
+            return (
+                False,
+                "Error occurred getting instance name. Details - {}".format(e.message)
+            )
+
     def get_phantom_base_url_formatted(self):
         try:
             config = self.get_config()
@@ -957,9 +973,17 @@ class ZcatmanConnector(BaseConnector):
         # pull in list of playbooks that should be active
         if settings_json:
             with open(settings_json[0], "r") as active_file:
-                active_playbooks = json.loads(active_file.read()).get("active_playbooks")
+                extracted_json = json.loads(active_file.read())
+                active_playbooks = extracted_json.get("active_playbooks")
+                no_active_list = extracted_json.get('no_active')
+            # check if this instance should have no active playbooks for ES 8
+            if active_playbooks and no_active_list:
+                _, instance_name = self.get_instance_name()
+                if instance_name in no_active_list:
+                    active_playbooks = None
         else:
             active_playbooks = None
+        
         for root, dirs, files in os.walk(playbooks_dir[0]):
             for file_ in files:
                 if file_.endswith(".tgz"):
@@ -1117,6 +1141,9 @@ class ZcatmanConnector(BaseConnector):
                         )
                         if not status:
                             return False, automation_token
+                    result, instance_name = self.get_instance_name()
+                    if not result:
+                        instance_name = "Unknown"
                     envvars_data = {
                             "env-MOCK_API_URL-name": "MOCK_API_URL",
                             "env-MOCK_API_URL-type": "text",
@@ -1127,6 +1154,9 @@ class ZcatmanConnector(BaseConnector):
                             "env-MOCK_API_TOKEN-name": "MOCK_API_TOKEN",
                             "env-MOCK_API_TOKEN-type": "password",
                             "env-MOCK_API_TOKEN-value": ss_json['mock_app'].get('mock_api_token', ''),
+                            "env-SYSTEM_NAME-name": "SYSTEM_NAME",
+                            "env-SYSTEM_NAME-type": "text",
+                            "env-SYSTEM_NAME-value": instance_name,
                             "env-NO_PROXY-name": "NO_PROXY",
                             "env-NO_PROXY-type": "text",
                             "env-NO_PROXY-value": "127.0.0.1,localhost"
